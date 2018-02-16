@@ -4,6 +4,7 @@ import requests
 import sqlite3
 import timeit
 
+
 class DocSet(object):
 
     def __init__(self, name):
@@ -15,53 +16,71 @@ class DocSet(object):
     @property
     def path(self):
 
-        return '{name}.docset'.format(name = self.name)
+        return '{name}.docset'.format(name=self.name)
 
     def init_db(self):
 
-        path = '{path}/Contents/Resources/docSet.dsidx'.format(path = self.path)
+        try:
+            path = '{path}/Contents/Resources/docSet.dsidx'.format(
+                path=self.path)
 
-        database = sqlite3.connect(path)
+            database = sqlite3.connect(path)
 
-        cursor = database.cursor()
+            cursor = database.cursor()
 
-        try: cursor.execute('DROP TABLE searchIndex;')
-        except: pass
+            try:
+                cursor.execute('DROP TABLE searchIndex;')
+            except:
+                pass
 
-        cursor.execute('CREATE TABLE searchIndex(id INTEGER PRIMARY KEY, name TEXT, type TEXT, path TEXT);')
-        cursor.execute('CREATE UNIQUE INDEX anchor ON searchIndex (name, type, path);')
+            cursor.execute(
+                'CREATE TABLE searchIndex(id INTEGER PRIMARY KEY, name TEXT, type TEXT, path TEXT);')
+            cursor.execute(
+                'CREATE UNIQUE INDEX anchor ON searchIndex (name, type, path);')
+
+        except Exception as e:
+            print('Failed to connect to sqlite3.')
+            print(str(e))
 
         database.commit()
         database.close()
 
     def insert_entries(self):
 
-        path = '{path}/Contents/Resources/docSet.dsidx'.format(path = self.path)
+        path = '{path}/Contents/Resources/docSet.dsidx'.format(path=self.path)
 
         database = sqlite3.connect(path)
 
         cursor = database.cursor()
 
-        inserts = [(entry.name, entry.type_, entry.path) for entry in self.entries]
+        inserts = [(entry.name, entry.type_, entry.path)
+                   for entry in self.entries]
 
-        cursor.executemany('insert into searchIndex(name, type, path) values (?,?,?)', inserts)
+        cursor.executemany(
+            'insert into searchIndex(name, type, path) values (?,?,?)', inserts)
 
         database.commit()
         database.close()
 
     def create(self):
 
+        print('Creating docset {name}'.format(name=self.name))
+
         for entry in list(self.entries):
+
             try:
                 entry.download()
-                print 'Downloaded {entry}'.format(entry = entry.name)
-            except Exception, e:
-                print 'Failed to download {entry}'.format(entry = entry.name)
-                print str(e)
+                print('Downloaded {entry}'.format(entry=entry.name))
+            except Exception as e:
+                print('Failed to download {entry}'.format(entry=entry.name))
+                print(str(e))
                 self.entries.remove(entry)
 
-        for entry in self.entries: entry.rewrite(self.entries)
+        for entry in self.entries:
+            entry.rewrite(self.entries)
+
         self.insert_entries()
+
 
 class Entry(object):
 
@@ -77,8 +96,8 @@ class Entry(object):
     def full_path(self):
 
         return '{docset}/Contents/Resources/Documents/{path}'.format(
-                                                    docset = self.docset.path,
-                                                    path = self.path)
+            docset=self.docset.path,
+            path=self.path)
 
     def download(self):
 
@@ -93,8 +112,8 @@ class Entry(object):
         else:
 
             raise Exception('Received "{code}" when downloading "{name}"'.format(
-                                                        code = r.status_code,
-                                                        name = self.name))
+                code=r.status_code,
+                name=self.name))
 
     def rewrite(self, entries):
 
@@ -142,7 +161,8 @@ class Entry(object):
         source.truncate()
         source.close()
 
-        print 'Finished rewriting {entry}'.format(entry = self.name)
+        print('Finished rewriting {entry}'.format(entry=self.name))
+
 
 if __name__ == '__main__':
 
@@ -158,12 +178,13 @@ if __name__ == '__main__':
 
         if r.status_code == 200:
 
-            soup = BeautifulSoup(r.content)
+            soup = BeautifulSoup(r.content, "html.parser")
             group = index['name']
 
             for div in soup.find_all('div'):
 
                 try:
+
                     if div['data-toclevel'] == '2':
                         link = div.a.attrs['href'].strip()
                         title = div.a.attrs['title']
@@ -174,18 +195,20 @@ if __name__ == '__main__':
                 except KeyError:
                     pass
 
-            print 'Finished indexing {index}'.format(index = index['name'])
+            print('Finished indexing {index}'.format(index=index['name']))
 
         else:
 
-            print 'Failed to index {index} ({code})'.format(
-                                        index = index['name'],
-                                        code = r.status_code)
+            print('Failed to index {index} ({code})'.format(
+                index=index['name'],
+                code=r.status_code))
+
+    print('Number of entries {entries}'.format(entries=len(docset.entries)))
 
     docset.create()
 
     stop = timeit.default_timer()
 
-    print 'Downloaded {count} entries in {elapsed} seconds.'.format(
-                                                count = len(docset.entries),
-                                                elapsed = (stop - start))
+    print('Downloaded {count} entries in {elapsed} seconds.'.format(
+        count=len(docset.entries),
+        elapsed=(stop - start)))
